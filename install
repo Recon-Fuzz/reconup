@@ -2,7 +2,7 @@
 set -eo pipefail
 
 # Recon installer - installs the reconup command
-# Usage: curl -L https://raw.githubusercontent.com/Recon-Fuzz/recon-fuzzer/main/reconup/install | bash
+# Usage: curl -L https://raw.githubusercontent.com/Recon-Fuzz/reconup/refs/heads/main/install | bash
 
 RECON_DIR="${RECON_DIR:-$HOME/.recon}"
 RECON_BIN_DIR="$RECON_DIR/bin"
@@ -14,7 +14,7 @@ main() {
     mkdir -p "$RECON_BIN_DIR"
 
     # Download reconup script
-    local reconup_url="https://raw.githubusercontent.com/Recon-Fuzz/recon-fuzzer/main/reconup/reconup"
+    local reconup_url="https://raw.githubusercontent.com/Recon-Fuzz/reconup/refs/heads/main/reconup"
 
     if command -v curl &> /dev/null; then
         curl -sSfL "$reconup_url" -o "$RECON_BIN_DIR/reconup"

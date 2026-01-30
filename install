@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+# Recon installer - installs the reconup command
+# Usage: curl -L https://raw.githubusercontent.com/Recon-Fuzz/recon-fuzzer/main/reconup/install | bash
+
+RECON_DIR="${RECON_DIR:-$HOME/.recon}"
+RECON_BIN_DIR="$RECON_DIR/bin"
+
+main() {
+    echo "Installing reconup..."
+
+    # Create directories
+    mkdir -p "$RECON_BIN_DIR"
+
+    # Download reconup script
+    local reconup_url="https://raw.githubusercontent.com/Recon-Fuzz/recon-fuzzer/main/reconup/reconup"
+
+    if command -v curl &> /dev/null; then
+        curl -sSfL "$reconup_url" -o "$RECON_BIN_DIR/reconup"
+    elif command -v wget &> /dev/null; then
+        wget -qO "$RECON_BIN_DIR/reconup" "$reconup_url"
+    else
+        echo "Error: curl or wget is required to install reconup"
+        exit 1
+    fi
+
+    # Make executable
+    chmod +x "$RECON_BIN_DIR/reconup"
+
+    # Add to PATH if not already there
+    add_to_path
+
+    echo ""
+    echo "reconup has been installed to $RECON_BIN_DIR/reconup"
+    echo ""
+    echo "To install recon, run:"
+    echo ""
+    echo "    reconup"
+    echo ""
+    echo "Or with a GitHub token (required for private repo):"
+    echo ""
+    echo "    reconup <github_token>"
+    echo ""
+    echo "Or set the RECON_GITHUB_TOKEN environment variable and run:"
+    echo ""
+    echo "    export RECON_GITHUB_TOKEN=<your_token>"
+    echo "    reconup"
+    echo ""
+
+    # Check if we need to source the profile
+    case ":$PATH:" in
+        *":$RECON_BIN_DIR:"*)
+            ;;
+        *)
+            echo "Run 'source ~/.bashrc' (or restart your shell) to update your PATH."
+            echo ""
+            ;;
+    esac
+}
+
+add_to_path() {
+    # Check if already in PATH
+    case ":$PATH:" in
+        *":$RECON_BIN_DIR:"*)
+            return
+            ;;
+    esac
+
+    # Detect shell and add to appropriate config
+    local shell_name
+    shell_name=$(basename "$SHELL")
+
+    local profile_file
+    case "$shell_name" in
+        bash)
+            if [[ -f "$HOME/.bashrc" ]]; then
+                profile_file="$HOME/.bashrc"
+            elif [[ -f "$HOME/.bash_profile" ]]; then
+                profile_file="$HOME/.bash_profile"
+            else
+                profile_file="$HOME/.bashrc"
+            fi
+            ;;
+        zsh)
+            profile_file="${ZDOTDIR:-$HOME}/.zshrc"
+            ;;
+        fish)
+            profile_file="$HOME/.config/fish/config.fish"
+            ;;
+        *)
+            profile_file="$HOME/.profile"
+            ;;
+    esac
+
+    # Add PATH export
+    if [[ "$shell_name" == "fish" ]]; then
+        echo "" >> "$profile_file"
+        echo "# Recon" >> "$profile_file"
+        echo "fish_add_path -a \"$RECON_BIN_DIR\"" >> "$profile_file"
+    else
+        echo "" >> "$profile_file"
+        echo "# Recon" >> "$profile_file"
+        echo "export PATH=\"\$PATH:$RECON_BIN_DIR\"" >> "$profile_file"
+    fi
+
+    echo "Added $RECON_BIN_DIR to PATH in $profile_file"
+}
+
+main "$@"

@@ -241,19 +241,10 @@ get_asset_url() {
         return 1
     }
 
-    # Find the asset URL for our file
-    # Parse JSON to find the asset with matching name
+    # Parse JSON to find the asset URL for our filename
+    # The "url" field comes before "name" in the asset object
     local asset_url
-    asset_url=$(echo "$response" | grep -oE '"url":\s*"https://api.github.com/repos/[^"]+/assets/[0-9]+"' | while read -r line; do
-        url=$(echo "$line" | grep -oE 'https://[^"]+')
-        # Check if this asset matches our filename
-        asset_info=$(curl -sSf -H "Authorization: token $token" "$url" 2>/dev/null)
-        asset_name=$(echo "$asset_info" | grep -oE '"name":\s*"[^"]+"' | head -1 | sed 's/"name":\s*"//;s/"$//')
-        if [[ "$asset_name" == "$filename" ]]; then
-            echo "$url"
-            break
-        fi
-    done)
+    asset_url=$(echo "$response" | grep -B5 "\"name\": \"$filename\"" | grep '"url"' | head -1 | grep -oE 'https://api.github.com/repos/[^"]+')
 
     echo "$asset_url"
 }

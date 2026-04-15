@@ -38,15 +38,6 @@ main() {
     echo ""
     echo "    reconup"
     echo ""
-    echo "Or with a GitHub token (required for private repo):"
-    echo ""
-    echo "    reconup <github_token>"
-    echo ""
-    echo "Or set the RECON_GITHUB_TOKEN environment variable and run:"
-    echo ""
-    echo "    export RECON_GITHUB_TOKEN=<your_token>"
-    echo "    reconup"
-    echo ""
 
     # Check if we need to source the profile
     case ":$PATH:" in

@@ -2,11 +2,10 @@
 set -eo pipefail
 
 # reconup - Recon Fuzzer installer and updater
-# Usage: reconup [github_token]
+# Usage: reconup
 #
 # Environment variables:
-#   RECON_GITHUB_TOKEN - GitHub personal access token (required for private repo)
-#   RECON_DIR         - Installation directory (default: ~/.recon)
+#   RECON_DIR - Installation directory (default: ~/.recon)
 
 RECON_DIR="${RECON_DIR:-$HOME/.recon}"
 RECON_BIN_DIR="$RECON_DIR/bin"
@@ -36,22 +35,10 @@ log_error() {
     echo -e "${RED}error${NC}: $1" >&2
 }
 
-# Get GitHub token from argument or environment
-get_github_token() {
-    if [[ -n "$1" ]]; then
-        echo "$1"
-    elif [[ -n "$RECON_GITHUB_TOKEN" ]]; then
-        echo "$RECON_GITHUB_TOKEN"
-    else
-        echo ""
-    fi
-}
-
 # Detect OS and architecture
 detect_platform() {
     local os arch
 
-    # Detect OS
     case "$(uname -s)" in
         Linux*)
             os="linux"
@@ -68,7 +55,6 @@ detect_platform() {
             ;;
     esac
 
-    # Detect architecture
     case "$(uname -m)" in
         x86_64|amd64)
             arch="x86_64"
@@ -115,7 +101,6 @@ check_platform_support() {
 # Get current installed version
 get_current_version() {
     if [[ -x "$RECON_BINARY" ]]; then
-        # Try to get version from binary
         local version
         version=$("$RECON_BINARY" --version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "")
         if [[ -n "$version" ]]; then
@@ -126,26 +111,16 @@ get_current_version() {
     echo ""
 }
 
-# Get latest release version from GitHub
+# Get latest release version from GitHub public API
 get_latest_version() {
-    local token="$1"
     local api_url="https://api.github.com/repos/$REPO/releases/latest"
     local response
 
-    if [[ -n "$token" ]]; then
-        response=$(curl -sSf -H "Authorization: token $token" "$api_url" 2>/dev/null) || {
-            log_error "Failed to fetch latest release info. Check your GitHub token."
-            exit 1
-        }
-    else
-        response=$(curl -sSf "$api_url" 2>/dev/null) || {
-            log_error "Failed to fetch latest release info. A GitHub token may be required for private repos."
-            log_info "Set RECON_GITHUB_TOKEN or pass token as argument: reconup <token>"
-            exit 1
-        }
-    fi
+    response=$(curl -sSf "$api_url" 2>/dev/null) || {
+        log_error "Failed to fetch latest release info from $api_url"
+        exit 1
+    }
 
-    # Extract tag name and remove 'v' prefix
     local version
     version=$(echo "$response" | grep -oE '"tag_name":\s*"v?[0-9]+\.[0-9]+\.[0-9]+"' | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
 
@@ -164,54 +139,29 @@ version_gt() {
 
 # Download and install recon
 install_recon() {
-    local token="$1"
-    local version="$2"
-    local platform="$3"
+    local version="$1"
+    local platform="$2"
 
     local filename="recon-${platform}.tar.gz"
     local download_url="https://github.com/$REPO/releases/download/v${version}/${filename}"
 
     log_info "Downloading recon v${version} for ${platform}..."
 
-    # Create temp directory
     local tmp_dir
     tmp_dir=$(mktemp -d)
     trap "rm -rf $tmp_dir" EXIT
 
     local archive_path="$tmp_dir/$filename"
 
-    # Download with authentication if token provided
-    if [[ -n "$token" ]]; then
-        # For private repos, we need to get the asset download URL
-        local asset_url
-        asset_url=$(get_asset_url "$token" "$version" "$filename")
+    curl -sSfL "$download_url" -o "$archive_path" || {
+        log_error "Failed to download recon from $download_url"
+        exit 1
+    }
 
-        if [[ -z "$asset_url" ]]; then
-            log_error "Failed to find download URL for $filename"
-            exit 1
-        fi
-
-        curl -sSfL \
-            -H "Authorization: token $token" \
-            -H "Accept: application/octet-stream" \
-            "$asset_url" \
-            -o "$archive_path" || {
-            log_error "Failed to download recon"
-            exit 1
-        }
-    else
-        curl -sSfL "$download_url" -o "$archive_path" || {
-            log_error "Failed to download recon. A GitHub token may be required."
-            exit 1
-        }
-    fi
-
-    # Extract archive
     log_info "Extracting..."
     mkdir -p "$RECON_BIN_DIR"
     tar -xzf "$archive_path" -C "$tmp_dir"
 
-    # Find the recon binary in extracted contents
     local recon_bin
     recon_bin=$(find "$tmp_dir" -name "recon" -type f ! -name "*.tar.gz" | head -1)
 
@@ -220,33 +170,10 @@ install_recon() {
         exit 1
     fi
 
-    # Install binary
     mv "$recon_bin" "$RECON_BINARY"
     chmod +x "$RECON_BINARY"
 
     log_success "Installed recon v${version} to $RECON_BINARY"
-}
-
-# Get asset download URL from GitHub API (for private repos)
-get_asset_url() {
-    local token="$1"
-    local version="$2"
-    local filename="$3"
-
-    local api_url="https://api.github.com/repos/$REPO/releases/tags/v${version}"
-    local response
-
-    response=$(curl -sSf -H "Authorization: token $token" "$api_url" 2>/dev/null) || {
-        log_error "Failed to fetch release info for v${version}"
-        return 1
-    }
-
-    # Parse JSON to find the asset URL for our filename
-    # The "url" field comes before "name" in the asset object
-    local asset_url
-    asset_url=$(echo "$response" | grep -B5 "\"name\": \"$filename\"" | grep '"url"' | head -1 | grep -oE 'https://api.github.com/repos/[^"]+')
-
-    echo "$asset_url"
 }
 
 main() {
@@ -260,26 +187,14 @@ main() {
     echo "  Recon Fuzzer Installer"
     echo ""
 
-    # Get GitHub token
-    local token
-    token=$(get_github_token "$1")
-
-    if [[ -z "$token" ]]; then
-        log_warn "No GitHub token provided. This may fail for private repos."
-        log_info "Set RECON_GITHUB_TOKEN or run: reconup <token>"
-        echo ""
-    fi
-
-    # Detect and check platform
     local platform
     platform=$(detect_platform)
     log_info "Detected platform: $platform"
     check_platform_support "$platform"
 
-    # Get versions
     local current_version latest_version
     current_version=$(get_current_version)
-    latest_version=$(get_latest_version "$token")
+    latest_version=$(get_latest_version)
 
     if [[ -n "$current_version" ]]; then
         log_info "Current version: v${current_version}"
@@ -288,7 +203,6 @@ main() {
     fi
     log_info "Latest version: v${latest_version}"
 
-    # Check if update is needed
     if [[ -n "$current_version" ]] && [[ "$current_version" == "$latest_version" ]]; then
         log_success "You already have the latest version (v${current_version})"
         echo ""
@@ -307,14 +221,12 @@ main() {
 
     echo ""
 
-    # Install
-    install_recon "$token" "$latest_version" "$platform"
+    install_recon "$latest_version" "$platform"
 
     echo ""
     log_success "Done!"
     echo ""
 
-    # Check PATH
     case ":$PATH:" in
         *":$RECON_BIN_DIR:"*)
             echo "Run 'recon --help' to get started."

@@ -9,7 +9,6 @@ set -eo pipefail
 
 RECON_DIR="${RECON_DIR:-$HOME/.recon}"
 RECON_BIN_DIR="$RECON_DIR/bin"
-RECON_BINARY="$RECON_BIN_DIR/recon"
 REPO="Recon-Fuzz/recon-fuzzer"
 
 # Colors for output
@@ -76,33 +75,43 @@ check_platform_support() {
     local platform="$1"
 
     case "$platform" in
-        linux-x86_64|macos-aarch64)
+        linux-x86_64|macos-aarch64|macos-x86_64|windows-x86_64)
             return 0
-            ;;
-        macos-x86_64|windows-x86_64)
-            log_error "Sorry, we don't support your system ($platform) yet."
-            log_info "Currently supported platforms:"
-            log_info "  - linux-x86_64"
-            log_info "  - macos-aarch64 (Apple Silicon)"
-            log_info ""
-            log_info "Support for $platform is planned for a future release."
-            exit 1
             ;;
         *)
             log_error "Sorry, we don't support your system ($platform) yet."
             log_info "Currently supported platforms:"
             log_info "  - linux-x86_64"
             log_info "  - macos-aarch64 (Apple Silicon)"
+            log_info "  - macos-x86_64 (Intel)"
+            log_info "  - windows-x86_64"
             exit 1
             ;;
     esac
 }
 
+# Asset name for a given platform (windows uses .zip and recon.exe)
+asset_name_for() {
+    case "$1" in
+        windows-x86_64) echo "recon-windows-x86_64.zip" ;;
+        *) echo "recon-$1.tar.gz" ;;
+    esac
+}
+
+# Installed binary path for a given platform
+binary_path_for() {
+    case "$1" in
+        windows-x86_64) echo "$RECON_BIN_DIR/recon.exe" ;;
+        *) echo "$RECON_BIN_DIR/recon" ;;
+    esac
+}
+
 # Get current installed version
 get_current_version() {
-    if [[ -x "$RECON_BINARY" ]]; then
+    local binary="$1"
+    if [[ -x "$binary" ]]; then
         local version
-        version=$("$RECON_BINARY" --version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "")
+        version=$("$binary" --version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "")
         if [[ -n "$version" ]]; then
             echo "$version"
             return
@@ -142,8 +151,14 @@ install_recon() {
     local version="$1"
     local platform="$2"
 
-    local filename="recon-${platform}.tar.gz"
+    local filename
+    filename=$(asset_name_for "$platform")
     local download_url="https://github.com/$REPO/releases/download/v${version}/${filename}"
+
+    local target_binary
+    target_binary=$(binary_path_for "$platform")
+    local binary_name
+    binary_name=$(basename "$target_binary")
 
     log_info "Downloading recon v${version} for ${platform}..."
 
@@ -160,20 +175,39 @@ install_recon() {
 
     log_info "Extracting..."
     mkdir -p "$RECON_BIN_DIR"
-    tar -xzf "$archive_path" -C "$tmp_dir"
+
+    case "$filename" in
+        *.zip)
+            if command -v unzip &> /dev/null; then
+                unzip -q "$archive_path" -d "$tmp_dir"
+            elif command -v 7z &> /dev/null; then
+                7z x -o"$tmp_dir" "$archive_path" > /dev/null
+            else
+                log_error "unzip or 7z is required to extract $filename"
+                exit 1
+            fi
+            ;;
+        *.tar.gz|*.tgz)
+            tar -xzf "$archive_path" -C "$tmp_dir"
+            ;;
+        *)
+            log_error "Unknown archive format: $filename"
+            exit 1
+            ;;
+    esac
 
     local recon_bin
-    recon_bin=$(find "$tmp_dir" -name "recon" -type f ! -name "*.tar.gz" | head -1)
+    recon_bin=$(find "$tmp_dir" -name "$binary_name" -type f | head -1)
 
     if [[ -z "$recon_bin" ]]; then
-        log_error "Could not find recon binary in archive"
+        log_error "Could not find $binary_name in archive"
         exit 1
     fi
 
-    mv "$recon_bin" "$RECON_BINARY"
-    chmod +x "$RECON_BINARY"
+    mv "$recon_bin" "$target_binary"
+    chmod +x "$target_binary"
 
-    log_success "Installed recon v${version} to $RECON_BINARY"
+    log_success "Installed recon v${version} to $target_binary"
 }
 
 main() {
@@ -192,8 +226,11 @@ main() {
     log_info "Detected platform: $platform"
     check_platform_support "$platform"
 
+    local target_binary
+    target_binary=$(binary_path_for "$platform")
+
     local current_version latest_version
-    current_version=$(get_current_version)
+    current_version=$(get_current_version "$target_binary")
     latest_version=$(get_latest_version)
 
     if [[ -n "$current_version" ]]; then

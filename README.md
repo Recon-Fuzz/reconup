@@ -32,17 +32,10 @@ Run `reconup` again. It only downloads if a newer release is available.
 |----------|--------|
 | Linux x86_64 | Supported |
 | macOS ARM64 (Apple Silicon) | Supported |
-| macOS x86_64 (Intel) | Coming soon |
-| Windows x86_64 | Coming soon |
+| macOS x86_64 (Intel) | Supported |
+| Windows x86_64 | Supported |
 
-## Installation Directory
-
-By default, `recon` is installed to `~/.recon/bin/recon`. Override with the `RECON_DIR` environment variable before running the installer:
-
-```bash
-export RECON_DIR=/custom/path
-curl -L https://raw.githubusercontent.com/Recon-Fuzz/reconup/refs/heads/main/install | bash
-```
+On Windows, run `reconup` from Git Bash or WSL.
 
 ## Uninstall
 
